@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>text-stream</title>
+    <style>
+        pre {
+            word-break: break-all;
+            max-height: 50vh;
+            overflow: hidden;
+        }
+    </style>
+    <script src="loadChunkTextFile.js"></script>
+</head>
+<body>
+    <h1>text-stream</h1>
+    <pre id="Content"></pre>
+    <pre id="Content2"></pre>
+    <script>
+        // TEST 
+        // Test1 USE DOM textContent append data
+        // Test2 USE DOM appendChild & createTextNode append data
+        const _AFTERTEST1 = true; // test Test2
+        const _AFTERTEST2 = true; // test Test1
+        const _MaxShowText = 1024000;
+        const _ChunkSize = 102400;
+        const _Files = ["dataExtraLarge.txt","dataLarge.txt","dataMid.txt","dataSmall.txt"]
+        const _Path = `./testfiles/${_Files[1]}`;
+
+        let avgTest1Count = 0;
+        let avgTest1Times = 0;
+        const Test1 = (path) => {
+            const maxShowText = _MaxShowText;
+            const chunkSize = _ChunkSize;
+
+            const time1 = Date.now();
+            console.log(`Test1 ${path} Start`);
+
+            const content = document.getElementById('Content');
+            content.textContent = "";
+            let virtualWaitingContent = "";
+            let setRequestAnimationFrame = false;
+            loadChunkTextFile(path,(odata)=> {
+                if(!odata.done && content.textContent.length < maxShowText) {
+                    virtualWaitingContent += odata.data;
+                    
+
+                    if(!setRequestAnimationFrame){
+                        setRequestAnimationFrame = true;
+                        requestAnimationFrame(()=> {
+                            setRequestAnimationFrame = false;
+                            content.textContent += virtualWaitingContent;
+                            // content.appendChild(document.createTextNode(virtualContent));
+                            virtualWaitingContent = "";
+                        })
+                    }
+                } else {
+                    if(odata.done) {
+                        const time2 = Date.now();
+                        avgTest1Count += 1;
+                        avgTest1Times += (time2 - time1)/1000;
+                        console.log(`Test1 ${path} AVG Spend Time: ${avgTest1Times/avgTest1Count}s, count: ${avgTest1Count}`);
+
+                        if(_AFTERTEST1) {
+                            Test2(path);
+                        }
+                    } 
+                }
+
+            }, chunkSize);
+        }
+
+        let avgTest2Count = 0;
+        let avgTest2Times = 0;
+        const Test2 = (path) => {
+            const maxShowText = _MaxShowText;
+            const chunkSize = _ChunkSize;
+
+            const time1 = Date.now();
+            console.log(`Test2 ${path} Start`);
+
+            const content = document.getElementById('Content2');
+            content.textContent = "";
+            let virtualWaitingContent = "";
+            let setRequestAnimationFrame = false;
+            loadChunkTextFile(path,(odata)=> {
+                if(!odata.done && content.textContent.length < 100000) {
+                    virtualWaitingContent += odata.data;
+                    
+
+                    if(!setRequestAnimationFrame){
+                        setRequestAnimationFrame = true;
+                        requestAnimationFrame(()=> {
+                            setRequestAnimationFrame = false;
+                            // content.textContent += virtualContent;
+                            content.appendChild(document.createTextNode(virtualWaitingContent));
+                            virtualWaitingContent = "";
+                        })
+                    }
+                } else {
+                    if(odata.done) {
+                        const time2 = Date.now();
+                        avgTest2Count += 1;
+                        avgTest2Times += (time2 - time1)/1000;
+                        console.log(`Test2 ${path} AVG Spend Time: ${avgTest2Times/avgTest2Count}s, count: ${avgTest2Count}`);
+
+                        if(_AFTERTEST2) {
+                            Test1(path);
+                        }
+                    }
+                }
+
+            }, chunkSize);
+        }
+
+        Test1("./testfiles/dataLarge.txt");
+    </script>
+</body>
+</html>
