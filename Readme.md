@@ -1,15 +1,19 @@
 # 文字檔案串流
 
-##### 版本 1.0.0
+##### 版本 1.1.0
 
-> 版本首位 修改做法時,
-> 版本中位 相同相同方式, 修改流程
+-   加入 Web Worker 處理 下載檔案 與 Decode Uint8Array
+-   並移除原本 非堵塞 setTimeout 方法, 大幅提升效率
+
+> 版本首位 修改做法時
+> 版本中位 相同做法, 修改流程
 > 版本末位 修改 BUG
 
 ### 使用到的 WebAPI
 
 #### 串流部分
 
+-   Web Worker
 -   fetch
 -   ReadableStream
 -   TextDecoder
@@ -87,6 +91,3 @@
     目前載入 dataLarge.txt, 提供兩種 Render 測試,
         Test1 : 採用 textContent 加入 文字;
         Test2 : 採用 createTextNode 透過 appendChild 加入;
-        *使用 dataLarge.txt
-           Test1 的整體時間約 117.2s
-           Test2 的整體時間約 130.7s

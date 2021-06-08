@@ -22,10 +22,11 @@
         // TEST 
         // Test1 USE DOM textContent append data
         // Test2 USE DOM appendChild & createTextNode append data
-        const _AFTERTEST1 = true; // test Test2
-        const _AFTERTEST2 = true; // test Test1
-        const _MaxShowText = 1024000;
-        const _ChunkSize = 102400;
+        let _AUTOTEST1COUNT = 3;
+        let _AUTOTEST2COUNT = 3;
+        const _TESTTIMEGAP = 1000;
+        const _MaxShowText = 102400;
+        const _ChunkSize = 1024;
         const _Files = ["dataExtraLarge.txt","dataLarge.txt","dataMid.txt","dataSmall.txt"]
         const _Path = `./testfiles/${_Files[1]}`;
 
@@ -45,7 +46,6 @@
             loadChunkTextFile(path,(odata)=> {
                 if(!odata.done && content.textContent.length < maxShowText) {
                     virtualWaitingContent += odata.data;
-                    
 
                     if(!setRequestAnimationFrame){
                         setRequestAnimationFrame = true;
@@ -63,8 +63,12 @@
                         avgTest1Times += (time2 - time1)/1000;
                         console.log(`Test1 ${path} AVG Spend Time: ${avgTest1Times/avgTest1Count}s, count: ${avgTest1Count}`);
 
-                        if(_AFTERTEST1) {
-                            Test2(path);
+                        if(_AUTOTEST1COUNT > 0) {
+                            _AUTOTEST1COUNT -= 1;
+                            console.log(`Test1 ${_TESTTIMEGAP / 1000}s後, 再次進行測試`);
+                            setTimeout(()=>{Test1(path)}, _TESTTIMEGAP);
+                        } else {
+                            console.log(`Test1 完成測試, 平均使用 ${avgTest1Times/avgTest1Count}s, 總次數: ${avgTest1Count}`);
                         }
                     } 
                 }
@@ -89,7 +93,6 @@
                 if(!odata.done && content.textContent.length < 100000) {
                     virtualWaitingContent += odata.data;
                     
-
                     if(!setRequestAnimationFrame){
                         setRequestAnimationFrame = true;
                         requestAnimationFrame(()=> {
@@ -105,9 +108,13 @@
                         avgTest2Count += 1;
                         avgTest2Times += (time2 - time1)/1000;
                         console.log(`Test2 ${path} AVG Spend Time: ${avgTest2Times/avgTest2Count}s, count: ${avgTest2Count}`);
-
-                        if(_AFTERTEST2) {
-                            Test1(path);
+                        
+                        if(_AUTOTEST2COUNT > 0) {
+                            _AUTOTEST2COUNT -= 1;
+                            console.log(`Test2 ${_TESTTIMEGAP / 1000}s後, 再次進行測試`);
+                            setTimeout(()=>{Test2(path)}, _TESTTIMEGAP);
+                        } else {
+                            console.log(`Test2 完成測試, 平均使用 ${avgTest2Times/avgTest2Count}s, 總次數: ${avgTest2Count}`);
                         }
                     }
                 }
@@ -115,7 +122,8 @@
             }, chunkSize);
         }
 
-        Test1("./testfiles/dataLarge.txt");
+        Test1(_Path);
+        Test2(_Path);
     </script>
 </body>
 </html>

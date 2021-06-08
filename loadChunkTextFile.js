@@ -5,16 +5,39 @@ function loadChunkTextFile(
     /**  cb: Callback Function, 當取得一定長度的資料時, 回傳資料給 cb
      *| 資料格式: obj { data: "your chunk str" }
      *| 長度: chunkSize */ cb,
-    /**  切分的檔案大小 */ chunkSize = 1024
+    /**  切分的檔案大小 */ chunkSize = 1024,
+    /**  當 Worker 沒有回傳資料達到一定時間時, 將自動關閉, 時間單位: 毫秒 */ timeout = 60000
 ) {
-    const chunkStr = { data: "", done: false };
-    const textDecoder = new TextDecoder();
-    const state = {
-        parseDone: false,
-        inDecodeDeep: 0,
-        waitingDecodeBuffers: [],
+    const loadChunkTextFileWorker = new Worker("loadChunkTextFileWorker.js");
+    let autoCloseWorkerTimer = -1;
+
+    loadChunkTextFileWorker.onmessage = (e) => {
+        // e.data =
+        // {
+        //     done: false,
+        //     result: decode data,
+        // }
+        setCloseWorkerTimer();
+        if (!e.data.done) {
+            chunkSplit(e.data.result);
+        } else {
+            finalChunkSplit(e.data.result);
+        }
     };
 
+    const chunkStr = { data: "" };
+
+    /** 回傳資料至 callback 函數 */
+    const result = (isDone, errorMessage = "") => {
+        cb({
+            data: chunkStr.data,
+            done: isDone,
+            error: errorMessage.length > 0,
+            errorMessage,
+        });
+    };
+
+    /** 將 worker 取得的資料進行切割, 當超出 chunkSize 時, 將 call result(boolean), 回傳資料 */
     const chunkSplit = (str) => {
         let needLen = chunkSize - chunkStr.data.length;
 
@@ -22,16 +45,16 @@ function loadChunkTextFile(
             chunkStr.data += str;
         } else if (str.length === needLen) {
             chunkStr.data += str;
-            cb(chunkStr);
+            result(false);
             chunkStr.data = "";
         } else if (str.length > needLen) {
             chunkStr.data += str.slice(0, needLen);
-            cb(chunkStr);
+            result(false);
 
             let pos = needLen;
             while (str.length - pos >= chunkSize) {
                 chunkStr.data = str.slice(pos, pos + chunkSize);
-                cb(chunkStr);
+                result(false);
                 pos = pos + chunkSize;
             }
 
@@ -43,79 +66,47 @@ function loadChunkTextFile(
         }
     };
 
+    /** 將 worker 取得的資料進行切割, 當超出 chunkSize 時, 將 call result(boolean), 回傳資料, 並回傳在 chunkStr 內資料, 且關閉 worker */
     const finalChunkSplit = (str) => {
         let needLen = chunkSize - chunkStr.data.length;
 
         if (str.length < needLen) {
             chunkStr.data += str;
-            cb(chunkStr);
+            result(false);
         } else if (str.length === needLen) {
             chunkStr.data += str;
-            cb(chunkStr);
+            result(false);
             chunkStr.data = "";
         } else if (str.length > needLen) {
             chunkStr.data += str.slice(0, needLen);
-            cb(chunkStr);
+            result(false);
 
             let pos = needLen;
             while (str.length - pos >= chunkSize) {
                 chunkStr.data = str.slice(pos, pos + chunkSize);
-                cb(chunkStr);
+                result(false);
                 pos = pos + chunkSize;
             }
 
             if (str.length - pos > 0) {
                 chunkStr.data = str.slice(pos, str.length);
-                cb(chunkStr);
+                result(false);
             }
         }
 
-        chunkStr.done = true;
         chunkStr.data = "";
-        cb(chunkStr);
+        result(true);
+        loadChunkTextFileWorker.terminate();
     };
 
-    const decodeUint8ArrayBuffer = () => {
-        setTimeout(() => {
-            state.inDecodeDeep -= 1;
-            chunkSplit(
-                textDecoder.decode(state.waitingDecodeBuffers[0], {
-                    stream: true,
-                })
-            );
-            state.waitingDecodeBuffers.splice(0, 1);
-
-            if (state.inDecodeDeep > 0) {
-                decodeUint8ArrayBuffer();
-            } else if (state.inDecodeDeep === 0 && state.parseDone) {
-                finalChunkSplit(textDecoder.decode());
-            }
-        });
+    const setCloseWorkerTimer = () => {
+        clearTimeout(autoCloseWorkerTimer);
+        autoCloseWorkerTimer = setTimeout(() => {
+            loadChunkTextFileWorker.terminate();
+            result(false, "ERROR: WorkerTimeout!!");
+        }, timeout);
     };
 
-    const addUint8ArrayBuffer = (buffer) => {
-        state.waitingDecodeBuffers.push(buffer);
-        state.inDecodeDeep += 1;
-
-        if (state.inDecodeDeep === 1) {
-            decodeUint8ArrayBuffer();
-        }
-    };
-
-    fetch(path)
-        .then(async (response) => {
-            const reader = response.body.getReader();
-
-            while (true) {
-                const { done, value } = await reader.read();
-
-                if (done) {
-                    state.parseDone = true;
-                    break;
-                } else {
-                    addUint8ArrayBuffer(value);
-                }
-            }
-        })
-        .catch(console.error);
+    loadChunkTextFileWorker.postMessage({ path });
+    setCloseWorkerTimer();
 }
