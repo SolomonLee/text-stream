@@ -8,14 +8,13 @@
     <style>
         pre {
             word-break: break-all;
-            max-height: 50vh;
+            height: 50vh;
             overflow: hidden;
         }
     </style>
     <script src="loadChunkTextFile.js"></script>
 </head>
 <body>
-    <h1>text-stream</h1>
     <pre id="Content"></pre>
     <pre id="Content2"></pre>
     <script>
@@ -26,13 +25,18 @@
         let _AUTOTEST2COUNT = 3;
         const _TESTTIMEGAP = 1000;
         const _MaxShowText = 102400;
-        const _ChunkSize = 1024;
+        const _ChunkSize = 10240;
         const _Files = ["dataExtraLarge.txt","dataLarge.txt","dataMid.txt","dataSmall.txt"]
         const _Path = `./testfiles/${_Files[1]}`;
 
         let avgTest1Count = 0;
         let avgTest1Times = 0;
         const Test1 = (path) => {
+            if(_AUTOTEST1COUNT === 0) {
+                console.log(`Test1 完成測試, 平均使用 ${avgTest1Times/avgTest1Count}s, 總次數: ${avgTest1Count}`);
+                return;
+            }
+
             const maxShowText = _MaxShowText;
             const chunkSize = _ChunkSize;
 
@@ -45,14 +49,13 @@
             let setRequestAnimationFrame = false;
             loadChunkTextFile(path,(odata)=> {
                 if(!odata.done && content.textContent.length < maxShowText) {
-                    virtualWaitingContent += odata.data;
+                    virtualWaitingContent += odata.chunks.join("");
 
                     if(!setRequestAnimationFrame){
                         setRequestAnimationFrame = true;
                         requestAnimationFrame(()=> {
                             setRequestAnimationFrame = false;
                             content.textContent += virtualWaitingContent;
-                            // content.appendChild(document.createTextNode(virtualContent));
                             virtualWaitingContent = "";
                         })
                     }
@@ -63,8 +66,8 @@
                         avgTest1Times += (time2 - time1)/1000;
                         console.log(`Test1 ${path} AVG Spend Time: ${avgTest1Times/avgTest1Count}s, count: ${avgTest1Count}`);
 
+                        _AUTOTEST1COUNT -= 1;
                         if(_AUTOTEST1COUNT > 0) {
-                            _AUTOTEST1COUNT -= 1;
                             console.log(`Test1 ${_TESTTIMEGAP / 1000}s後, 再次進行測試`);
                             setTimeout(()=>{Test1(path)}, _TESTTIMEGAP);
                         } else {
@@ -79,6 +82,11 @@
         let avgTest2Count = 0;
         let avgTest2Times = 0;
         const Test2 = (path) => {
+            if(_AUTOTEST2COUNT === 0) {
+                console.log(`Test2 完成測試, 平均使用 ${avgTest2Times/avgTest2Count}s, 總次數: ${avgTest2Count}`);
+                return;
+            }
+
             const maxShowText = _MaxShowText;
             const chunkSize = _ChunkSize;
 
@@ -91,13 +99,12 @@
             let setRequestAnimationFrame = false;
             loadChunkTextFile(path,(odata)=> {
                 if(!odata.done && content.textContent.length < 100000) {
-                    virtualWaitingContent += odata.data;
+                    virtualWaitingContent += odata.chunks.join("");
                     
                     if(!setRequestAnimationFrame){
                         setRequestAnimationFrame = true;
                         requestAnimationFrame(()=> {
                             setRequestAnimationFrame = false;
-                            // content.textContent += virtualContent;
                             content.appendChild(document.createTextNode(virtualWaitingContent));
                             virtualWaitingContent = "";
                         })
@@ -109,8 +116,8 @@
                         avgTest2Times += (time2 - time1)/1000;
                         console.log(`Test2 ${path} AVG Spend Time: ${avgTest2Times/avgTest2Count}s, count: ${avgTest2Count}`);
                         
+                        _AUTOTEST2COUNT -= 1;
                         if(_AUTOTEST2COUNT > 0) {
-                            _AUTOTEST2COUNT -= 1;
                             console.log(`Test2 ${_TESTTIMEGAP / 1000}s後, 再次進行測試`);
                             setTimeout(()=>{Test2(path)}, _TESTTIMEGAP);
                         } else {

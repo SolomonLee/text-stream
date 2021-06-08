@@ -8,10 +8,62 @@ function loadChunkTextFile(
     /**  切分的檔案大小 */ chunkSize = 1024,
     /**  當 Worker 沒有回傳資料達到一定時間時, 將自動關閉, 時間單位: 毫秒 */ timeout = 60000
 ) {
-    const loadChunkTextFileWorker = new Worker("loadChunkTextFileWorker.js");
+    const workerLoadAndDecode = new Worker("workerLoadAndDecode.js");
+    const workerSplitStrToChunk = new Worker("workerSplitStrToChunk.js");
+    const workerSplitStrToChunkWorkList = [];
+    let workerSplitStrToChunkIsWorking = false;
     let autoCloseWorkerTimer = -1;
+    const state = { chunk: "", fullChunks: [], isLoadDone: false };
 
-    loadChunkTextFileWorker.onmessage = (e) => {
+    const splitToChunkSize = (str) => {
+        if (!workerSplitStrToChunkIsWorking) {
+            workerSplitStrToChunkIsWorking = true;
+
+            workerSplitStrToChunk.postMessage({
+                data: str,
+                chunkSize,
+                chunkString: state.chunk,
+            });
+        } else {
+            workerSplitStrToChunkWorkList.push(str);
+        }
+    };
+
+    /** 回傳資料至 callback 函數 */
+    const result = (isDone, errorMessage = "") => {
+        cb({
+            chunks: state.fullChunks,
+            done: isDone,
+            error: errorMessage.length > 0,
+            errorMessage,
+        });
+        state.fullChunks = [];
+    };
+
+    /** 將 worker 取得的資料進行切割, 當超出 chunkSize 時, 將 call result(boolean), 回傳資料 */
+    const chunkSplit = (str) => {
+        splitToChunkSize(str);
+    };
+
+    /** 將 worker 取得的資料進行切割, 當超出 chunkSize 時, 將 call result(boolean), 回傳資料, 並回傳在 state 內資料, 且關閉 worker */
+    const finalChunkSplit = (str) => {
+        state.isLoadDone = true;
+        splitToChunkSize(str);
+
+        workerLoadAndDecode.terminate();
+        clearTimeout(autoCloseWorkerTimer);
+    };
+
+    const setCloseWorkerTimer = () => {
+        clearTimeout(autoCloseWorkerTimer);
+        autoCloseWorkerTimer = setTimeout(() => {
+            workerLoadAndDecode.terminate();
+            workerSplitStrToChunk.terminate();
+            result(false, "ERROR: WorkerTimeout!!");
+        }, timeout);
+    };
+
+    workerLoadAndDecode.onmessage = (e) => {
         // e.data =
         // {
         //     done: false,
@@ -25,88 +77,34 @@ function loadChunkTextFile(
         }
     };
 
-    const chunkStr = { data: "" };
+    workerSplitStrToChunk.onmessage = (e) => {
+        // e.data =
+        // {
+        //     chunkString: "切完剩餘",
+        //     fullChunks:
+        // }
+        const rp = e.data;
 
-    /** 回傳資料至 callback 函數 */
-    const result = (isDone, errorMessage = "") => {
-        cb({
-            data: chunkStr.data,
-            done: isDone,
-            error: errorMessage.length > 0,
-            errorMessage,
-        });
-    };
-
-    /** 將 worker 取得的資料進行切割, 當超出 chunkSize 時, 將 call result(boolean), 回傳資料 */
-    const chunkSplit = (str) => {
-        let needLen = chunkSize - chunkStr.data.length;
-
-        if (str.length < needLen) {
-            chunkStr.data += str;
-        } else if (str.length === needLen) {
-            chunkStr.data += str;
+        state.chunk = rp.chunkString;
+        state.fullChunks = rp.fullChunks;
+        if (state.fullChunks.length) {
             result(false);
-            chunkStr.data = "";
-        } else if (str.length > needLen) {
-            chunkStr.data += str.slice(0, needLen);
-            result(false);
+        }
 
-            let pos = needLen;
-            while (str.length - pos >= chunkSize) {
-                chunkStr.data = str.slice(pos, pos + chunkSize);
+        workerSplitStrToChunkIsWorking = false;
+        if (workerSplitStrToChunkWorkList.length > 0) {
+            splitToChunkSize(workerSplitStrToChunkWorkList.splice(0, 1));
+        } else {
+            if (state.isLoadDone) {
+                workerSplitStrToChunk.terminate();
+                state.fullChunks.push(state.chunk);
+                state.chunk = "";
                 result(false);
-                pos = pos + chunkSize;
-            }
-
-            if (str.length - pos > 0) {
-                chunkStr.data = str.slice(pos, str.length);
-            } else {
-                chunkStr.data = "";
+                result(true);
             }
         }
     };
 
-    /** 將 worker 取得的資料進行切割, 當超出 chunkSize 時, 將 call result(boolean), 回傳資料, 並回傳在 chunkStr 內資料, 且關閉 worker */
-    const finalChunkSplit = (str) => {
-        let needLen = chunkSize - chunkStr.data.length;
-
-        if (str.length < needLen) {
-            chunkStr.data += str;
-            result(false);
-        } else if (str.length === needLen) {
-            chunkStr.data += str;
-            result(false);
-            chunkStr.data = "";
-        } else if (str.length > needLen) {
-            chunkStr.data += str.slice(0, needLen);
-            result(false);
-
-            let pos = needLen;
-            while (str.length - pos >= chunkSize) {
-                chunkStr.data = str.slice(pos, pos + chunkSize);
-                result(false);
-                pos = pos + chunkSize;
-            }
-
-            if (str.length - pos > 0) {
-                chunkStr.data = str.slice(pos, str.length);
-                result(false);
-            }
-        }
-
-        chunkStr.data = "";
-        result(true);
-        loadChunkTextFileWorker.terminate();
-    };
-
-    const setCloseWorkerTimer = () => {
-        clearTimeout(autoCloseWorkerTimer);
-        autoCloseWorkerTimer = setTimeout(() => {
-            loadChunkTextFileWorker.terminate();
-            result(false, "ERROR: WorkerTimeout!!");
-        }, timeout);
-    };
-
-    loadChunkTextFileWorker.postMessage({ path });
+    workerLoadAndDecode.postMessage({ path });
     setCloseWorkerTimer();
 }
